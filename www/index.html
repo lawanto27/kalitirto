@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b4aa2">
+<link rel="icon" href="icon-192.png">
+<title>KALITIRTO</title>
+<style>
+:root{--bg:#eaf4fd;--card:#fff;--biru:#0b4aa2;--biru2:#2d4aa3;--teks:#12263f;--abu:#5d7087;--garis:#cfe2f5;--merah:#c0392b;--hijau:#1e8449}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--teks);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.4}
+.wrap{max-width:620px;margin:0 auto;padding:14px 14px 96px}
+.card{background:var(--card);border:1px solid var(--garis);border-radius:14px;padding:14px;margin-bottom:12px}
+.head{text-align:center;background:#fff;border-bottom:3px solid var(--biru);padding:8px 0}
+.head img{height:92px;max-width:90%;object-fit:contain}
+h2{margin:6px 0 12px;font-size:20px;color:var(--biru)}
+.btn{display:block;width:100%;min-height:54px;border:0;border-radius:12px;background:var(--biru);color:#fff;font-size:17px;font-weight:700;padding:12px;margin:8px 0;cursor:pointer}
+.btn.abu{background:#fff;color:var(--biru);border:2px solid var(--biru)}
+.btn.merah{background:var(--merah)}
+.btn.hijau{background:var(--hijau)}
+.btn:disabled{background:#b9c7d6;color:#fff;border-color:#b9c7d6}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{background:#fff;border:1px solid var(--garis);border-radius:14px;padding:12px}
+.stat b{display:block;font-size:30px;color:var(--biru)}
+.stat span{color:var(--abu);font-size:14px}
+label{display:block;font-weight:600;margin:12px 0 4px}
+input,select{width:100%;min-height:50px;font-size:16px;padding:10px 12px;border:1.5px solid var(--garis);border-radius:10px;background:#fff;color:var(--teks)}
+input:focus,select:focus,button:focus-visible{outline:3px solid #7fb2ee}
+input[readonly]{background:#eef3f8}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.item{display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--garis);border-radius:12px;padding:12px;margin-bottom:8px;font:inherit;color:inherit;cursor:pointer}
+.item .n{font-weight:700}
+.item .m{color:var(--abu);font-size:14px;margin-top:2px}
+.tag{display:inline-block;font-size:12px;font-weight:700;border-radius:20px;padding:2px 9px;margin-right:4px;background:#dcecfb;color:var(--biru)}
+.tag.off{background:#f1d9d6;color:var(--merah)}
+.tag.usaha{background:#fdebc8;color:#8a5a00}
+.nav{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:2px solid var(--garis);display:flex;overflow-x:auto;padding-bottom:env(safe-area-inset-bottom)}
+.nav button{flex:1 0 16.66%;min-width:58px;min-height:60px;border:0;background:none;font-size:11px;font-weight:700;color:var(--abu);cursor:pointer;padding:4px 2px}
+.nav button.on{color:var(--biru);box-shadow:inset 0 3px 0 var(--biru)}
+.kecil{color:var(--abu);font-size:14px}
+.splash{min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:24px;background:#fff;text-align:center}
+.splash img{width:100%;max-width:380px}
+.splash .btn{max-width:380px;margin-top:28px}
+.over{position:fixed;inset:0;background:var(--bg);overflow:auto;z-index:5}
+.toast{position:fixed;left:14px;right:14px;bottom:80px;background:var(--teks);color:#fff;border-radius:10px;padding:12px;text-align:center;z-index:9}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="over" class="over" hidden></div>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const rp = n => 'Rp' + Number(n || 0).toLocaleString('id-ID');
+const TARIF = {Reguler: 15000, Usaha: 50000};
+
+/* ---------- Database lokal (IndexedDB) ---------- */
+let db;
+function bukaDB() {
+  return new Promise((ok, gagal) => {
+    const r = indexedDB.open('kalitirto', 2);
+    r.onupgradeneeded = () => {
+      const d = r.result;
+      if (!d.objectStoreNames.contains('pelanggan')) d.createObjectStore('pelanggan', {keyPath: 'id'});
+      if (!d.objectStoreNames.contains('tagihan')) d.createObjectStore('tagihan', {keyPath: 'key'});
+      if (!d.objectStoreNames.contains('pengaturan')) d.createObjectStore('pengaturan', {keyPath: 'k'});
+    };
+    r.onsuccess = () => { db = r.result; ok(); };
+    r.onerror = () => gagal(r.error);
+  });
+}
+const toko = (s, m = 'readonly') => db.transaction(s, m).objectStore(s);
+const minta = r => new Promise((ok, gagal) => { r.onsuccess = () => ok(r.result); r.onerror = () => gagal(r.error); });
+const semua = s => minta(toko(s).getAll());
+const ambil = (s, k) => minta(toko(s).get(k));
+const simpanDB = (s, v) => minta(toko(s, 'readwrite').put(v));
+const hapusDB = (s, k) => minta(toko(s, 'readwrite').delete(k));
+
+/* ---------- Status aplikasi ---------- */
+let pel = [], cari = '', filterStatus = 'Semua', layar = 'beranda';
+
+async function muatPelanggan() {
+  pel = (await semua('pelanggan')).map(p => ({...p, kolektor: p.kolektor || 'Belum dibagi'})).sort((a, b) => a.id.localeCompare(b.id, 'id', {numeric: true}));
+}
+function toast(t) {
+  const e = document.createElement('div');
+  e.className = 'toast'; e.textContent = t;
+  document.body.appendChild(e);
+  setTimeout(() => e.remove(), 2600);
+}
+
+/* ---------- Tampilan ---------- */
+function kepala() {
+  return '<div class="head"><img src="logo.jpg" alt="KALITIRTO Organisasi Pengelola Air"></div>';
+}
+function navigasi() {
+  const b = (k, t) => `<button class="${layar === k ? 'on' : ''}" onclick="pindah('${k}')">${t}</button>`;
+  return `<nav class="nav">${b('beranda', 'Beranda')}${b('pelanggan', 'Pelanggan')}${b('tagihan', 'Tagihan')}${b('kolektor', 'Kolektor')}${b('pdf', 'Cetak PDF')}${b('excel', 'Excel')}${b('pengaturan', 'Atur')}</nav>`;
+}
+function pindah(k) { layar = k; gambar(); window.scrollTo(0, 0); }
+
+function gambar() {
+  const app = $('#app');
+  if (layar === 'awal') {
+    app.innerHTML = `<div class="splash"><img src="logo.jpg" alt="KALITIRTO"><button class="btn" onclick="pindah('beranda')">Masuk</button></div>`;
+    return;
+  }
+  app.innerHTML = kepala() + '<div class="wrap">' + isiLayar() + '</div>' + navigasi();
+}
+
+function pelangganHTML() {
+  const k = cari.trim().toLowerCase();
+  const daftar = pel.filter(p => (filterStatus === 'Semua' || (p.status || 'Aktif') === filterStatus) && (!k || p.id.toLowerCase().includes(k) || p.nama.toLowerCase().includes(k)));
+  const adaContoh = pel.some(p => p.contoh);
+  let h = `<h2>Pelanggan</h2>
+  <button class="btn" onclick="formPelanggan()">+ Tambah pelanggan</button>
+  <input type="search" placeholder="Cari ID atau nama" value="${esc(cari)}" oninput="cari=this.value;daftarSaja()" style="margin:6px 0 8px">
+  <label>Filter status pelanggan</label><select id="filterStatus" onchange="filterStatus=this.value;daftarSaja()">${opt(['Semua','Aktif','Nonaktif'], filterStatus)}</select>
+  <div id="daftar">${itemHTML(daftar)}</div>
+  <div class="card" style="margin-top:18px"><b>Data contoh</b>
+    <p class="kecil">Untuk mencoba aplikasi. Hapus sebelum dipakai sungguhan.</p>`;
+  h += adaContoh
+    ? `<button class="btn merah" onclick="hapusContoh()">Hapus semua data contoh</button>`
+    : `<button class="btn abu" onclick="isiContoh()">Isi data contoh</button>`;
+  return h + '</div>';
+}
+function itemHTML(daftar) {
+  if (!pel.length) return '<div class="card kecil">Belum ada pelanggan. Tekan "Tambah pelanggan" atau isi data contoh.</div>';
+  if (!daftar.length) return '<div class="card kecil">Tidak ada pelanggan yang cocok.</div>';
+  return daftar.map(p => `<button class="item" onclick="formPelanggan('${esc(p.id).replace(/'/g, '&#39;')}')">
+    <div class="n">${esc(p.id)} - ${esc(p.nama)}</div>
+    <div class="m">RT ${esc(p.rt)} / RW ${esc(p.rw)} &nbsp; Meter awal ${esc(p.meterAwal)}</div>
+    <div style="margin-top:6px"><span class="tag ${p.status === 'Aktif' ? '' : 'off'}">${p.status}</span><span class="tag ${p.jenis === 'Usaha' ? 'usaha' : ''}">${p.jenis}</span><span class="tag">${p.metode}</span><span class="tag">${esc(p.kolektor || 'Belum dibagi')}</span></div>
+  </button>`).join('');
+}
+function daftarSaja() {
+  const k = cari.trim().toLowerCase();
+  $('#daftar').innerHTML = itemHTML(pel.filter(p => (filterStatus === 'Semua' || (p.status || 'Aktif') === filterStatus) && (!k || p.id.toLowerCase().includes(k) || p.nama.toLowerCase().includes(k))));
+}
+
+/* ---------- Formulir pelanggan ---------- */
+function tutup() { $('#over').hidden = true; $('#over').innerHTML = ''; }
+function opt(arr, v) { return arr.map(a => `<option ${a === v ? 'selected' : ''}>${a}</option>`).join(''); }
+
+async function formPelanggan(id) {
+  const p = id ? pel.find(x => x.id === id) : {id: '', nama: '', rt: '', rw: '', wa: '', jenis: 'Reguler', abonemen: TARIF.Reguler, meterAwal: 0, status: 'Aktif', metode: 'Tunai', kolektor: 'Belum dibagi'};
+  const baru = !id;
+  $('#over').hidden = false;
+  $('#over').innerHTML = `<div class="wrap"><h2>${baru ? 'Tambah pelanggan' : 'Edit pelanggan'}</h2>
+  <div class="card">
+    <label>ID pelanggan</label><input id="f_id" value="${esc(p.id)}" ${baru ? '' : 'readonly'} autocapitalize="characters">
+    <label>Nama pelanggan</label><input id="f_nama" value="${esc(p.nama)}">
+    <div class="row2"><div><label>RT</label><input id="f_rt" value="${esc(p.rt)}" inputmode="numeric"></div>
+    <div><label>RW</label><input id="f_rw" value="${esc(p.rw)}" inputmode="numeric"></div></div>
+    <label>Nomor WhatsApp (boleh kosong)</label><input id="f_wa" value="${esc(p.wa)}" inputmode="tel" placeholder="08xxxxxxxxxx">
+    <label>Jenis pelanggan</label><select id="f_jenis" onchange="gantiJenis()">${opt(['Reguler', 'Usaha'], p.jenis)}</select>
+    <label>Abonemen (Rp)</label><input id="f_abon" value="${esc(p.abonemen)}" inputmode="numeric">
+    <label>Angka meter awal</label><input id="f_meter" value="${esc(p.meterAwal)}" inputmode="decimal">
+    <label>Metode pembayaran utama</label><select id="f_metode">${opt(['Tunai', 'Transfer'], p.metode)}</select>
+    <label>Petugas kolektor</label><select id="f_kolektor">${opt(['Kolektor 1', 'Kolektor 2', 'Belum dibagi'], p.kolektor || 'Belum dibagi')}</select>
+    ${baru ? '' : `<label>Status</label><input value="${p.status}" readonly>`}
+  </div>
+  <button class="btn" onclick="simpanPelanggan(${baru ? 'null' : "'" + esc(p.id).replace(/'/g, '&#39;') + "'"})">Simpan</button>
+  ${baru ? '' : (p.status === 'Aktif'
+      ? `<button class="btn abu" onclick="ubahStatus('${esc(p.id)}')">Nonaktifkan pelanggan</button>`
+      : `<button class="btn hijau" onclick="ubahStatus('${esc(p.id)}')">Aktifkan pelanggan</button>`)}
+  ${baru ? '' : `<button class="btn abu" onclick="riwayat('${esc(p.id)}')">Riwayat tagihan</button>`}
+  ${baru ? '' : `<button class="btn merah" onclick="hapusPelanggan('${esc(p.id)}')">Hapus pelanggan</button>`}
+  <button class="btn abu" onclick="tutup()">Batal</button></div>`;
+}
+function gantiJenis() { $('#f_abon').value = TARIF[$('#f_jenis').value]; }
+
+async function simpanPelanggan(idLama) {
+  const v = i => $('#' + i).value.trim();
+  const id = v('f_id').toUpperCase(), nama = v('f_nama');
+  const abon = Number(v('f_abon').replace(',', '.')), meter = Number(v('f_meter').replace(',', '.'));
+  if (!id) return alert('ID pelanggan wajib diisi.');
+  if (!/^[A-Z0-9_-]+$/.test(id)) return alert('ID hanya boleh berisi huruf, angka, tanda - atau _ (tanpa spasi).');
+  if (!nama) return alert('Nama pelanggan wajib diisi.');
+  if (!(abon >= 0) || v('f_abon') === '') return alert('Abonemen harus berupa angka.');
+  if (!(meter >= 0) || v('f_meter') === '') return alert('Angka meter awal harus berupa angka 0 atau lebih.');
+  if (!idLama && await ambil('pelanggan', id)) return alert('ID "' + id + '" sudah dipakai pelanggan lain. Gunakan ID yang berbeda.');
+  const lama = idLama ? pel.find(x => x.id === idLama) : {};
+  await simpanDB('pelanggan', {...lama, id, nama, rt: v('f_rt'), rw: v('f_rw'), wa: v('f_wa'), jenis: v('f_jenis'), abonemen: abon, meterAwal: meter, metode: v('f_metode'), kolektor: v('f_kolektor'), status: lama.status || 'Aktif'});
+  await muatPelanggan(); tutup(); gambar(); toast('Tersimpan');
+}
+
+async function ubahStatus(id) {
+  const p = pel.find(x => x.id === id);
+  if (p.status === 'Aktif') {
+    if (!confirm('Nonaktifkan ' + p.nama + '? Pelanggan nonaktif tidak ikut tagihan bulanan.')) return;
+    p.status = 'Nonaktif';
+  } else {
+    const t = prompt('Masukkan angka meter awal aktual saat pengaktifan:', p.meterAwal);
+    if (t === null) return;
+    const m = Number(String(t).replace(',', '.'));
+    if (t.trim() === '' || !(m >= 0)) return alert('Angka meter tidak valid. Pelanggan belum diaktifkan.');
+    p.meterAwal = m; p.status = 'Aktif';
+  }
+  await simpanDB('pelanggan', p);
+  await muatPelanggan(); tutup(); gambar(); toast('Status diperbarui');
+}
+
+async function hapusPelanggan(id) {
+  const p = pel.find(x => x.id === id);
+  const riwayat = (await semua('tagihan')).some(t => t.id === id || (t.baris && t.baris.some(b => b.id === id)));
+  let pesan = 'HAPUS PERMANEN ' + p.nama + '?\n';
+  if (riwayat) pesan += '\nPERINGATAN: pelanggan ini memiliki data tagihan sebelumnya.\n';
+  pesan += '\nKetik HAPUS lalu tekan OK untuk melanjutkan.';
+  const j = prompt(pesan);
+  if (j === null) return;
+  if (j.trim() !== 'HAPUS') return alert('Dibatalkan. Kata yang diketik harus HAPUS.');
+  await hapusDB('pelanggan', id);
+  await muatPelanggan(); tutup(); gambar(); toast('Pelanggan dihapus');
+}
+
+/* ---------- Data contoh ---------- */
+async function isiContoh() {
+  const c = [
+    ['C001', 'Bapak Slamet', '01', '01', '081200000001', 'Reguler', 15000, 120, 'Tunai'],
+    ['C002', 'Ibu Sari', '01', '02', '', 'Reguler', 15000, 85, 'Transfer'],
+    ['C003', 'Warung Makmur', '02', '01', '081200000003', 'Usaha', 50000, 300, 'Tunai'],
+    ['C004', 'Bapak Joko', '02', '02', '', 'Reguler', 15000, 44, 'Tunai'],
+    ['C005', 'Ibu Wati', '03', '01', '081200000005', 'Reguler', 15000, 10, 'Tunai']
+  ];
+  for (const [id, nama, rt, rw, wa, jenis, abonemen, meterAwal, metode] of c) {
+    if (!(await ambil('pelanggan', id))) await simpanDB('pelanggan', {id, nama, rt, rw, wa, jenis, abonemen, meterAwal, metode, status: 'Aktif', contoh: true});
+  }
+  const x = await ambil('pelanggan', 'C005'); x.status = 'Nonaktif'; await simpanDB('pelanggan', x);
+  await muatPelanggan(); gambar(); toast('Data contoh ditambahkan');
+}
+async function hapusContoh() {
+  if (!confirm('Hapus semua data contoh? Data pelanggan asli Anda tidak ikut terhapus.')) return;
+  for (const p of pel.filter(x => x.contoh)) await hapusDB('pelanggan', p.id);
+  await muatPelanggan(); gambar(); toast('Data contoh dihapus');
+}
+
+/* ---------- Tahap 2: pengaturan, tagihan, tunggakan, koreksi ---------- */
+const CFG0 = {org: 'KALITIRTO', alamat: '', kontak: '', tReguler: 15000, tUsaha: 50000, perM3: 500, batas: 15, tglBaca: '', tglTerbit: '', riwayatTarif: []};
+const BLN = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+let cfg = {...CFG0}, tag = [], periode = '', dok = null;
+const p2 = n => String(n).padStart(2, '0');
+const hariIni = () => { const d = new Date(); return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()); };
+const bulanIni = () => hariIni().slice(0, 7);
+const lbl = p => { const [y, m] = p.split('-'); return BLN[m - 1] + ' ' + y; };
+const tgl = s => s ? new Date(s + 'T00:00:00').toLocaleDateString('id-ID', {day: 'numeric', month: 'long', year: 'numeric'}) : '-';
+const wkt = s => new Date(s).toLocaleString('id-ID', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'});
+const angka = t => { t = String(t).trim().replace(',', '.'); return t === '' || isNaN(Number(t)) ? NaN : Number(t); };
+
+async function muatCfg() {
+  const r = await ambil('pengaturan', 'cfg');
+  if (r) cfg = {...CFG0, ...r.v};
+  TARIF.Reguler = cfg.tReguler; TARIF.Usaha = cfg.tUsaha;
+}
+async function muatTagihan() { tag = await semua('tagihan'); }
+function tarifPeriode(p) {
+  const daftar = [...(cfg.riwayatTarif || [])].filter(x => x.mulai <= p).sort((a,b) => a.mulai.localeCompare(b.mulai));
+  return daftar.length ? daftar[daftar.length - 1] : {mulai:'0000-00', tReguler:cfg.tReguler, tUsaha:cfg.tUsaha, perM3:cfg.perM3, batas:cfg.batas};
+}
+function abonemenPeriode(p, tr) {
+  const standar = (cfg.riwayatTarif || []).map(x => p.jenis === 'Usaha' ? Number(x.tUsaha) : Number(x.tReguler));
+  standar.push(p.jenis === 'Usaha' ? CFG0.tUsaha : CFG0.tReguler);
+  const lamaAdalahStandar = standar.includes(Number(p.abonemen));
+  return lamaAdalahStandar ? (p.jenis === 'Usaha' ? tr.tUsaha : tr.tReguler) : Number(p.abonemen || 0);
+}
+
+function isiLayar() {
+  if (layar === 'beranda') return berandaHTML();
+  if (layar === 'tagihan') return tagihanHTML();
+  if (layar === 'pengaturan') return pengaturanHTML();
+  if (layar === 'kolektor') return kolektorHTML();
+  if (layar === 'pdf') return pdfHTML();
+  if (layar === 'excel') return excelHTML();
+  return pelangganHTML();
+}
+
+/* Beranda */
+function berandaHTML() {
+  const aktif = pel.filter(p => p.status === 'Aktif').length;
+  const cur = tag.find(x => x.key === bulanIni() && x.status === 'terbit');
+  let n = 0, t = 0, u = 0;
+  if (cur) cur.baris.forEach(b => { n++; t += b.tarifTotal; u += b.tung; });
+  const s = (a, b) => `<div class="stat"><b style="font-size:${String(a).length > 9 ? 20 : 28}px">${a}</b><span>${b}</span></div>`;
+  return `<h2>Beranda - ${lbl(bulanIni())}</h2>
+  <div class="grid">${s(aktif, 'Pelanggan aktif')}${s(pel.length - aktif, 'Pelanggan nonaktif')}
+  ${s(n, 'Sudah dibuatkan tagihan')}${s(rp(t), 'Total tagihan bulan ini')}
+  ${s(rp(u), 'Total tunggakan manual')}${s(rp(t + u), 'Total keseluruhan')}</div>
+  <button class="btn" style="margin-top:16px" onclick="mulaiBulanIni()">MULAI TAGIHAN BULAN INI</button>
+  <button class="btn abu" onclick="pindah('pelanggan')">Data pelanggan</button>`;
+}
+function mulaiBulanIni() { layar = 'tagihan'; bukaPeriode(bulanIni()); }
+
+/* Pembagian kolektor */
+function kolektorHTML() {
+  const d = tag.find(x => x.key === bulanIni() && x.status === 'terbit');
+  const daftar = ['Kolektor 1','Kolektor 2'];
+  return `<h2>Pembagian kolektor</h2><p class="kecil">Atur petugas melalui formulir masing-masing pelanggan. Daftar berikut menampilkan pelanggan aktif dan ringkasan tagihan bulan berjalan.</p>` + daftar.map(nama => {
+    const orang = pel.filter(p => p.status === 'Aktif' && (p.kolektor || 'Belum dibagi') === nama);
+    let tunai = 0, total = 0;
+    const rows = orang.map(p => {
+      const b = d && d.baris.find(x => x.id === p.id);
+      const j = b ? Number(b.total || 0) : 0;
+      total += j; if (p.metode !== 'Transfer') tunai += j;
+      return `<div class="item"><div class="n">${esc(p.id)} - ${esc(p.nama)}</div><div class="m">${p.metode === 'Transfer' ? '<span class="tag usaha">TRANSFER</span>' : '<span class="tag">TUNAI</span>'} ${d ? rp(j) : 'Tagihan belum tersedia'}</div></div>`;
+    }).join('');
+    return `<div class="card"><h2>${nama}</h2><div class="grid"><div class="stat"><b>${orang.length}</b><span>Pelanggan</span></div><div class="stat"><b style="font-size:19px">${rp(tunai)}</b><span>Total uang tunai</span></div></div><p class="kecil">Total seluruh tagihan: <b>${rp(total)}</b></p>${rows || '<p class="kecil">Belum ada pelanggan yang ditugaskan.</p>'}</div>`;
+  }).join('') + `<div class="card"><b>Belum dibagi</b><p class="kecil">${pel.filter(p => p.status === 'Aktif' && (!p.kolektor || p.kolektor === 'Belum dibagi')).length} pelanggan aktif belum memiliki kolektor. Atur melalui menu Pelanggan → pilih pelanggan → Edit.</p></div>`;
+}
+
+/* Pengaturan */
+function pengaturanHTML() {
+  const f = (id, t, v, m = '') => `<label>${t}</label><input id="${id}" value="${esc(v)}" ${m}>`;
+  return `<h2>Pengaturan</h2><div class="card">
+  ${f('s_org', 'Nama organisasi', cfg.org)}${f('s_alamat', 'Alamat organisasi', cfg.alamat)}${f('s_kontak', 'Nomor kontak', cfg.kontak, 'inputmode="tel"')}
+  <label>Tanggal pencatatan meter (bawaan)</label><input type="date" id="s_baca" value="${cfg.tglBaca}">
+  <label>Tanggal penerbitan tagihan (bawaan)</label><input type="date" id="s_terbit" value="${cfg.tglTerbit}">
+  <h2 style="margin-top:18px">Tarif</h2>
+  ${f('s_reg', 'Abonemen Reguler (Rp)', cfg.tReguler, 'inputmode="numeric"')}${f('s_usa', 'Abonemen Usaha (Rp)', cfg.tUsaha, 'inputmode="numeric"')}
+  ${f('s_batas', 'Batas pemakaian dalam abonemen (m³)', cfg.batas, 'inputmode="numeric"')}${f('s_per', 'Tarif per m³ di atas batas (Rp)', cfg.perM3, 'inputmode="numeric"')}
+  <label>Tarif baru mulai berlaku pada periode</label><input type="month" id="s_mulai" value="${bulanIni()}">
+  <p class="kecil">Perubahan tarif berlaku mulai periode yang dipilih. Tagihan lama yang sudah terbit tetap memakai tarif sebelumnya.</p></div>
+  <button class="btn" onclick="simpanCfg()">Simpan pengaturan</button>`;
+}
+async function simpanCfg() {
+  const v = i => $('#' + i).value.trim();
+  const n = {...cfg, org: v('s_org'), alamat: v('s_alamat'), kontak: v('s_kontak'), tglBaca: v('s_baca'), tglTerbit: v('s_terbit'),
+    tReguler: angka(v('s_reg')), tUsaha: angka(v('s_usa')), batas: angka(v('s_batas')), perM3: angka(v('s_per'))};
+  const mulai = v('s_mulai');
+  if (!/^\d{4}-\d{2}$/.test(mulai)) return alert('Pilih periode mulai berlakunya tarif.');
+  const riwayatLama = [...(cfg.riwayatTarif || [])];
+  if (!riwayatLama.length) riwayatLama.push({mulai:'0000-00', tReguler:cfg.tReguler, tUsaha:cfg.tUsaha, batas:cfg.batas, perM3:cfg.perM3});
+  n.riwayatTarif = [...riwayatLama.filter(x => x.mulai !== mulai), {mulai, tReguler:n.tReguler, tUsaha:n.tUsaha, batas:n.batas, perM3:n.perM3}].sort((a,b) => a.mulai.localeCompare(b.mulai));
+  if (!n.org) return alert('Nama organisasi wajib diisi.');
+  for (const k of ['tReguler', 'tUsaha', 'batas', 'perM3']) if (!(n[k] >= 0)) return alert('Tarif dan batas harus berupa angka 0 atau lebih.');
+  await simpanDB('pengaturan', {k: 'cfg', v: n});
+  cfg = n; TARIF.Reguler = n.tReguler; TARIF.Usaha = n.tUsaha;
+  toast('Pengaturan tersimpan');
+}
+
+/* Perhitungan */
+function hit(b) {
+  if (!dok || dok.status === 'draft') {
+    const p = pel.find(x => x.id === b.id);
+    if (b.abon == null) b.abon = p ? p.abonemen : 0; const tr = dok.tarif || tarifPeriode(dok.key); b.perM3 = tr.perM3; b.batas = tr.batas;
+  }
+  let pakai = null;
+  if (b.estimasi) { const e = angka(b.pakaiManual); if (e >= 0) pakai = Math.ceil(e); }
+  else { const a = angka(b.akhir); if (a >= b.awal) pakai = Math.ceil(+(a - b.awal).toFixed(6)); }
+  b.pakai = pakai;
+  b.lebih = pakai == null ? 0 : Math.max(0, pakai - b.batas);
+  b.biaya = b.lebih * b.perM3;
+  b.tarifTotal = pakai == null ? null : b.abon + b.biaya;
+  b.tung = b.tunggakan.reduce((s, t) => s + t.nominal, 0);
+  b.total = pakai == null ? null : b.tarifTotal + b.tung;
+  b.akhirEf = pakai == null ? null : (b.estimasi ? b.awal + pakai : angka(b.akhir));
+}
+const salah = b => !b.estimasi && angka(b.akhir) < b.awal;
+function ringkas() {
+  let n = 0, k = 0, s = 0, t = 0, u = 0;
+  dok.baris.forEach(b => { hit(b); if (salah(b)) s++; else if (b.pakai == null) k++; else { n++; t += b.tarifTotal; u += b.tung; } });
+  return {n, k, s, t, u, tot: t + u};
+}
+
+/* Daftar & editor tagihan */
+function tagihanHTML() {
+  if (dok) return dokHTML();
+  const daftar = [...tag].sort((a, b) => b.key.localeCompare(a.key));
+  return `<h2>Tagihan</h2><div class="card"><label>Periode tagihan</label>
+  <input type="month" id="per" value="${periode || bulanIni()}"><button class="btn" onclick="bukaPeriode($('#per').value)">Buka periode ini</button></div>
+  <h2>Daftar tagihan</h2>` + (daftar.length ? daftar.map(d => {
+    let t = 0; d.baris.forEach(b => { if (b.total != null) t += b.total; });
+    return `<button class="item" onclick="bukaPeriode('${d.key}')"><div class="n">${lbl(d.key)} <span class="tag ${d.status === 'terbit' ? '' : 'usaha'}">${d.status === 'terbit' ? 'Terbit' : 'Draft'}</span></div>
+    <div class="m">${d.baris.length} pelanggan${d.status === 'terbit' ? ' - total ' + rp(t) : ''}</div></button>`;
+  }).join('') : '<div class="card kecil">Belum ada tagihan. Pilih periode lalu tekan "Buka periode ini".</div>');
+}
+async function bukaPeriode(p) {
+  if (!p) return alert('Pilih periode bulan dan tahun dulu.');
+  periode = p;
+  let d = tag.find(x => x.key === p);
+  d = d ? JSON.parse(JSON.stringify(d)) : {key: p, status: 'draft', tarif: tarifPeriode(p), tglBaca: cfg.tglBaca || hariIni(), tglTerbit: cfg.tglTerbit || hariIni(), baris: [], log: []};
+  if (!d.tarif) d.tarif = tarifPeriode(p);
+  if (d.status === 'draft') {
+    const aktif = pel.filter(x => x.status === 'Aktif');
+    d.baris = d.baris.filter(b => aktif.some(x => x.id === b.id));
+    aktif.filter(x => !d.baris.some(b => b.id === x.id)).forEach(x => d.baris.push({id: x.id, nama: x.nama, jenis: x.jenis, rt: x.rt, rw: x.rw, abon: abonemenPeriode(x, d.tarif), awal: x.meterAwal, akhir: '', estimasi: false, pakaiManual: '', tunggakan: []}));
+    if (!d.baris.length) return alert('Belum ada pelanggan aktif.');
+  }
+  dok = d; layar = 'tagihan'; gambar(); window.scrollTo(0, 0);
+}
+function totHTML() {
+  const r = ringkas();
+  return `<div class="grid"><div class="stat"><b>${r.n}</b><span>Siap diterbitkan</span></div>
+  <div class="stat"><b style="color:${r.k || r.s ? '#c0392b' : '#1e8449'}">${r.k + r.s}</b><span>Belum diisi / bermasalah</span></div></div>
+  <div class="card" style="margin-top:10px">Tagihan bulan ini: <b>${rp(r.t)}</b><br>Tunggakan manual: <b>${rp(r.u)}</b><br>Total keseluruhan: <b>${rp(r.tot)}</b></div>`;
+}
+function dokHTML() {
+  const d = dok.status === 'draft';
+  return `<h2>${lbl(dok.key)} <span class="tag ${d ? 'usaha' : ''}">${d ? 'Draft' : 'Sudah terbit'}</span></h2>
+  <button class="btn abu" onclick="dok=null;muatTagihan().then(gambar)">Kembali ke daftar</button>
+  <div class="card">
+  <label>Tanggal pencatatan meter</label><input type="date" value="${dok.tglBaca}" ${d ? '' : 'disabled'} onchange="dok.tglBaca=this.value">
+  <label>Tanggal penerbitan</label><input type="date" value="${dok.tglTerbit}" ${d ? '' : 'disabled'} onchange="dok.tglTerbit=this.value">
+  <p class="kecil">${tgl(dok.tglBaca)} - ${tgl(dok.tglTerbit)}</p></div>
+  <div id="tot">${totHTML()}</div>
+  ${d ? `<button class="btn abu" onclick="simpanDraft()">Simpan draft</button><button class="btn" onclick="terbitkan()">TERBITKAN SEMUA TAGIHAN</button>` : ''}
+  <input type="search" placeholder="Cari pelanggan" oninput="cariBaris(this.value)" style="margin:10px 0">
+  ${dok.baris.map(barisHTML).join('')}
+  ${dok.log && dok.log.length ? `<div class="card"><b>Catatan koreksi (${dok.log.length})</b>${dok.log.map(l => `<p class="kecil">${wkt(l.waktu)} - ${esc(l.id)}: ${rp(l.lama.total)} menjadi ${rp(l.baru.total)}. Alasan: ${esc(l.alasan)}</p>`).join('')}</div>` : ''}`;
+}
+function barisHTML(b, i) {
+  const d = dok.status === 'draft';
+  hit(b);
+  return `<div class="card" id="c${i}" data-t="${esc((b.id + ' ' + b.nama).toLowerCase())}"><b>${esc(b.id)} - ${esc(b.nama)}</b>${b.estimasi ? ' <span class="tag usaha">ESTIMASI</span>' : ''}
+  <div class="kecil">Meter awal ${b.awal} - abonemen ${rp(b.abon)}</div>
+  ${d ? (b.estimasi ? `<label>Pemakaian estimasi (m³)</label><input inputmode="decimal" value="${esc(b.pakaiManual)}" oninput="isiBaris(${i},'pakaiManual',this.value)">`
+      : `<label>Meter akhir</label><input inputmode="decimal" value="${esc(b.akhir)}" oninput="isiBaris(${i},'akhir',this.value)">`)
+    : `<div>Meter akhir: <b>${b.estimasi ? 'estimasi' : b.akhir}</b></div>`}
+  <div id="r${i}" style="margin:8px 0">${hasilHTML(b)}</div>
+  <div class="row2"><button class="btn abu" onclick="editTung(${i})">Tunggakan${b.tunggakan.length ? ' (' + b.tunggakan.length + ')' : ''}</button>
+  ${d ? `<button class="btn abu" onclick="togEst(${i})">${b.estimasi ? 'Pakai meter' : 'Meter rusak'}</button>`
+      : `<button class="btn abu" onclick="koreksi(${i})">Koreksi</button>`}</div></div>`;
+}
+function hasilHTML(b) {
+  hit(b);
+  if (salah(b)) return '<div style="color:#c0392b;font-weight:700">Peringatan: meter akhir lebih kecil dari meter awal!</div>';
+  if (b.pakai == null) return '<div class="kecil">Belum diisi</div>';
+  return `<div>Pemakaian <b>${b.pakai} m³</b> - Tagihan ${rp(b.tarifTotal)}${b.tung ? ' - Tunggakan ' + rp(b.tung) : ''}</div><div><b>Total ${rp(b.total)}</b></div>`;
+}
+function isiBaris(i, f, v) { dok.baris[i][f] = v; $('#r' + i).innerHTML = hasilHTML(dok.baris[i]); $('#tot').innerHTML = totHTML(); }
+function togEst(i) { const b = dok.baris[i]; b.estimasi = !b.estimasi; gambar(); }
+function cariBaris(q) { q = q.trim().toLowerCase(); document.querySelectorAll('[data-t]').forEach(e => e.style.display = e.dataset.t.includes(q) ? '' : 'none'); }
+
+async function simpanDraft() {
+  dok.baris.forEach(hit);
+  await simpanDB('tagihan', JSON.parse(JSON.stringify(dok)));
+  await muatTagihan(); toast('Draft tersimpan');
+}
+async function terbitkan() {
+  const r = ringkas();
+  if (r.s) return alert('Ada ' + r.s + ' pelanggan dengan meter akhir lebih kecil dari meter awal. Perbaiki dulu.');
+  if (r.k) return alert('Masih ada ' + r.k + ' pelanggan yang belum diisi. Isi meter akhir, isi estimasi (tombol Meter rusak), atau nonaktifkan pelanggan tersebut.');
+  const ada = await ambil('tagihan', dok.key);
+  if (ada && ada.status === 'terbit') return alert('Tagihan periode ini sudah pernah diterbitkan.');
+  if (!confirm('Terbitkan ' + r.n + ' tagihan ' + lbl(dok.key) + '?\nTotal keseluruhan ' + rp(r.tot) + '.\nSetelah terbit, perubahan hanya lewat Koreksi.')) return;
+  dok.baris.forEach(hit);
+  dok.status = 'terbit'; dok.diterbitkan = new Date().toISOString();
+  await simpanDB('tagihan', JSON.parse(JSON.stringify(dok)));
+  for (const b of dok.baris) { const p = pel.find(x => x.id === b.id); if (p) { p.meterAwal = b.akhirEf; await simpanDB('pelanggan', p); } }
+  await muatPelanggan(); await muatTagihan(); gambar(); toast('Tagihan diterbitkan');
+}
+
+/* Tunggakan manual */
+function editTung(i) {
+  const b = dok.baris[i];
+  $('#over').hidden = false;
+  $('#over').innerHTML = `<div class="wrap"><h2>Tunggakan - ${esc(b.nama)}</h2><div class="card">
+  <p class="kecil">Satu baris untuk satu bulan, format: keterangan = nominal. Contoh:<br>September 2026 = 15000<br>Oktober 2026 = 17500</p>
+  <textarea id="tung" rows="6" style="width:100%;font-size:16px;padding:10px;border:1.5px solid var(--garis);border-radius:10px">${esc(b.tunggakan.map(t => t.ket + ' = ' + t.nominal).join('\n'))}</textarea></div>
+  <button class="btn" onclick="simpanTung(${i})">Simpan tunggakan</button><button class="btn abu" onclick="tutup()">Batal</button></div>`;
+}
+async function simpanTung(i) {
+  const b = dok.baris[i], hasil = [];
+  for (const g of $('#tung').value.split('\n').map(x => x.trim()).filter(Boolean)) {
+    const k = g.lastIndexOf('='); const n = k < 0 ? NaN : angka(g.slice(k + 1).replace(/\./g, ''));
+    if (!(n > 0) || !g.slice(0, k).trim()) return alert('Baris tidak valid: "' + g + '". Gunakan format: keterangan = nominal');
+    hasil.push({ket: g.slice(0, k).trim(), nominal: n});
+  }
+  const lama = b.total;
+  let alasan = '';
+  if (dok.status === 'terbit') {
+    alasan = prompt('Tagihan sudah terbit. Alasan mengubah tunggakan (wajib diisi):');
+    if (!alasan || !alasan.trim()) return alert('Dibatalkan: alasan wajib diisi.');
+  }
+  b.tunggakan = hasil; hit(b);
+  if (dok.status === 'terbit') {
+    dok.log.push({waktu: new Date().toISOString(), id: b.id, alasan: 'Tunggakan: ' + alasan.trim(), lama: {total: lama}, baru: {total: b.total}});
+    await simpanDB('tagihan', JSON.parse(JSON.stringify(dok))); await muatTagihan();
+  }
+  tutup(); gambar(); toast('Tunggakan tersimpan');
+}
+
+/* Koreksi tagihan terbit (juga untuk mengganti estimasi dengan meter aktual) */
+async function koreksi(i) {
+  const b = dok.baris[i];
+  const t = prompt('Meter akhir yang benar untuk ' + b.nama + '\n(sekarang: ' + (b.estimasi ? 'estimasi ' + b.pakai + ' m³' : b.akhir) + ', meter awal ' + b.awal + '):');
+  if (t === null) return;
+  const m = angka(t);
+  if (!(m >= b.awal)) return alert('Meter akhir harus angka dan tidak boleh lebih kecil dari meter awal (' + b.awal + ').');
+  const al = prompt('Alasan koreksi (wajib diisi):');
+  if (!al || !al.trim()) return alert('Koreksi dibatalkan: alasan wajib diisi.');
+  const c = {...b, akhir: m, estimasi: false, pakaiManual: ''}; hit(c);
+  if (!confirm('Ubah total ' + rp(b.total) + ' menjadi ' + rp(c.total) + '?')) return;
+  dok.log.push({waktu: new Date().toISOString(), id: b.id, alasan: al.trim(), lama: {akhir: b.akhir, pakai: b.pakai, estimasi: b.estimasi, total: b.total}, baru: {akhir: m, pakai: c.pakai, estimasi: false, total: c.total}});
+  const efLama = b.akhirEf; Object.assign(b, c);
+  await simpanDB('tagihan', JSON.parse(JSON.stringify(dok)));
+  const p = pel.find(x => x.id === b.id);
+  if (p && p.meterAwal === efLama) { p.meterAwal = b.akhirEf; await simpanDB('pelanggan', p); }
+  await muatPelanggan(); await muatTagihan(); gambar(); toast('Koreksi tersimpan');
+}
+
+/* Riwayat tagihan per pelanggan */
+function riwayat(id) {
+  const p = pel.find(x => x.id === id);
+  const baris = [...tag].filter(d => d.status === 'terbit').sort((a, b) => b.key.localeCompare(a.key)).map(d => ({d, b: d.baris.find(x => x.id === id)})).filter(x => x.b);
+  $('#over').innerHTML = `<div class="wrap"><h2>Riwayat - ${esc(p.nama)}</h2>` + (baris.length ? baris.map(({d, b}) =>
+    `<div class="card"><b>${lbl(d.key)}</b>${b.estimasi ? ' <span class="tag usaha">ESTIMASI</span>' : ''}<br>Meter ${b.awal} - ${b.estimasi ? 'estimasi' : b.akhir}, pemakaian ${b.pakai} m³<br>Abonemen ${rp(b.abon)} + pemakaian tambahan ${rp(b.biaya)}<br>${b.tung ? 'Tunggakan ' + rp(b.tung) + ' (' + esc(b.tunggakan.map(t => t.ket).join(', ')) + ')<br>' : ''}<b>Total ${rp(b.total)}</b></div>`).join('')
+    : '<div class="card kecil">Belum ada tagihan terbit untuk pelanggan ini.</div>') + '<button class="btn abu" onclick="tutup()">Tutup</button></div>';
+}
+
+
+/* ---------- Tahap C: impor/ekspor data format CSV kompatibel Excel ---------- */
+function excelHTML() {
+  return `<h2>Import dan Export Excel</h2>
+  <div class="card"><h3>Template data pelanggan</h3><p class="kecil">Unduh template CSV yang dapat dibuka dan diedit di Microsoft Excel atau Google Sheets. Gunakan satu baris untuk satu pelanggan.</p><button class="btn" onclick="unduhTemplateCSV()">Unduh template pelanggan</button></div>
+  <div class="card"><h3>Export data</h3><p class="kecil">File menggunakan format CSV UTF-8 dengan pemisah titik koma agar lebih mudah dibuka pada pengaturan Excel Indonesia.</p><button class="btn" onclick="exportPelangganCSV()">Export data pelanggan</button><button class="btn abu" onclick="exportTagihanCSV()">Export rekap tagihan</button></div>
+  <div class="card"><h3>Import pelanggan</h3><p class="kecil">Pilih file CSV dari template. Untuk file Excel XLSX, buka di Excel/Sheets lalu pilih Simpan sebagai atau Download → CSV UTF-8 terlebih dahulu.</p><label>File CSV</label><input id="csvFile" type="file" accept=".csv,text/csv"><label>Jika ID sudah ada</label><select id="csvMode"><option value="skip">Lewati data duplikat (aman)</option><option value="update">Perbarui data pelanggan yang sudah ada</option></select><button class="btn" onclick="importPelangganCSV()">Proses import CSV</button><p class="kecil">Import hanya menambah atau memperbarui data pelanggan. Data tagihan dan riwayat tidak dihapus.</p></div>
+  <div class="card"><h3>Backup dan pemulihan data</h3><p class="kecil">Simpan salinan seluruh data aplikasi ke satu file JSON. File ini berisi pelanggan, tagihan, dan pengaturan. Simpan di HP atau tempat lain yang aman.</p><button class="btn hijau" onclick="buatBackupManual()">Download backup seluruh data</button><label>File backup untuk dipulihkan</label><input id="backupFile" type="file" accept=".json,application/json"><button class="btn merah" onclick="pulihkanBackup()">Pulihkan dari file backup</button><p class="kecil"><b>Penting:</b> Pemulihan akan mengganti data aplikasi saat ini dengan isi file backup. Sebelum pemulihan, aplikasi akan mengunduh backup kondisi sekarang dan meminta konfirmasi. Jangan tutup halaman selama proses berlangsung.</p></div>
+  <div class="card kecil"><b>Catatan format:</b> Saat ini aplikasi menyediakan CSV kompatibel Excel, bukan file XLSX asli. Import XLSX langsung belum tersedia karena library XLSX belum disertakan secara lokal. CSV dapat dibuka dan diedit dengan Excel.</div>`;
+}
+const kolomCSV = ['id','nama','rt','rw','wa','jenis','abonemen','meterAwal','metode','kolektor','status'];
+const judulCSV = ['ID Pelanggan','Nama','RT','RW','WhatsApp','Jenis','Abonemen','Meter Awal','Metode','Kolektor','Status'];
+function csvCell(v) { const x = String(v ?? ''); return '"' + x.replace(/"/g,'""') + '"'; }
+function buatCSV(headers, rows) { return '\ufeff' + [headers, ...rows].map(r => r.map(csvCell).join(';')).join('\r\n'); }
+function unduhBlob(nama, isi, tipe='text/csv;charset=utf-8') {
+  const blob = new Blob([isi], {type:tipe}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=nama; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
+function unduhTemplateCSV() {
+  const contoh = [['P001','Contoh Nama','01','02','081234567890','Reguler',15000,125.5,'Tunai','Kolektor 1','Aktif']];
+  unduhBlob('template-pelanggan-kalitirto.csv', buatCSV(judulCSV, contoh));
+}
+function exportPelangganCSV() {
+  const rows = pel.map(p => kolomCSV.map(k => p[k] ?? (k==='status'?'Aktif':'')));
+  unduhBlob('data-pelanggan-kalitirto.csv', buatCSV(judulCSV, rows));
+  toast('Export pelanggan dimulai');
+}
+function exportTagihanCSV() {
+  const h=['Periode','Status','ID Pelanggan','Nama','RT','RW','Meter Awal','Meter Akhir','Pemakaian m3','Abonemen','Biaya Pemakaian','Tagihan Bulan Ini','Tunggakan','Total','Metode','Kolektor','Estimasi'];
+  const rows=[];
+  [...tag].sort((a,b)=>a.key.localeCompare(b.key)).forEach(d => (d.baris||[]).forEach(b => {
+    const p=pel.find(x=>x.id===b.id)||{};
+    rows.push([d.key,d.status,b.id,b.nama,b.rt||p.rt||'',b.rw||p.rw||'',b.awal,b.akhir,b.pakai,b.abon,b.biaya,b.tarifTotal,b.tung,b.total,p.metode||'',p.kolektor||'Belum dibagi',b.estimasi?'YA':'TIDAK']);
+  }));
+  if (!rows.length) return alert('Belum ada data tagihan untuk diekspor.');
+  unduhBlob('rekap-tagihan-kalitirto.csv',buatCSV(h,rows)); toast('Export rekap tagihan dimulai');
+}
+function parseCSV(teks) {
+  teks=teks.replace(/^\ufeff/,''); const out=[]; let row=[], cell='', q=false;
+  for(let i=0;i<teks.length;i++) { const c=teks[i];
+    if(q) { if(c==='"' && teks[i+1]==='"'){cell+='"';i++;} else if(c==='"') q=false; else cell+=c; }
+    else if(c==='"') q=true;
+    else if(c===';' || c===','){row.push(cell.trim());cell='';}
+    else if(c==='\n'){row.push(cell.trim()); if(row.some(x=>x!==''))out.push(row);row=[];cell='';}
+    else if(c!=='\r') cell+=c;
+  }
+  row.push(cell.trim()); if(row.some(x=>x!==''))out.push(row); return out;
+}
+function normHeader(x) { return String(x||'').toLowerCase().replace(/[ _-]/g,'').replace(/[^a-z0-9]/g,''); }
+async function importPelangganCSV() {
+  const file=$('#csvFile')?.files?.[0]; if(!file) return alert('Pilih file CSV terlebih dahulu.');
+  if(file.size>5*1024*1024) return alert('Ukuran file maksimal 5 MB.');
+  let rows; try { rows=parseCSV(await file.text()); } catch(e) { return alert('File tidak dapat dibaca.'); }
+  if(rows.length<2) return alert('File tidak memiliki baris data.');
+  const alias={id:['id','idpelanggan','kodepelanggan'],nama:['nama','namapelanggan'],rt:['rt'],rw:['rw'],wa:['wa','whatsapp','nomorwhatsapp'],jenis:['jenis','jenispelanggan'],abonemen:['abonemen','tarifabonemen'],meterAwal:['meterawal','meterterakhir'],metode:['metode','metodepembayaran'],kolektor:['kolektor','petugaskolektor'],status:['status']};
+  const head=rows[0].map(normHeader), idx={};
+  for(const [k,alts] of Object.entries(alias)){idx[k]=head.findIndex(x=>alts.includes(x));}
+  if(idx.id<0 || idx.nama<0) return alert('Kolom wajib tidak ditemukan. Gunakan template KALITIRTO (ID Pelanggan dan Nama).');
+  // Tolak file yang memuat ID berulang sebelum satu pun data disimpan.
+  const idFile = new Map(), duplikatFile = [];
+  for (let r=1; r<rows.length; r++) {
+    const id = String(rows[r][idx.id] ?? '').trim().toUpperCase();
+    if (!id) continue;
+    if (idFile.has(id)) duplikatFile.push(id + ' (baris ' + (idFile.get(id)+1) + ' dan ' + (r+1) + ')');
+    else idFile.set(id, r);
+  }
+  if (duplikatFile.length) return alert('Import dibatalkan. Ada ID pelanggan ganda di dalam file:\n' + duplikatFile.slice(0,10).join('\n') + (duplikatFile.length>10?'\nDan '+(duplikatFile.length-10)+' duplikasi lainnya.':''));
+  const mode=$('#csvMode').value; let tambah=0, ubah=0, lewati=0, gagal=0; const error=[];
+  for(let r=1;r<rows.length;r++) {
+    const row=rows[r]; const val=k=>idx[k]>=0?(row[idx[k]]??'').trim():'';
+    const id=val('id').toUpperCase(), nama=val('nama');
+    if(!id||!/^[A-Z0-9_-]+$/.test(id)||!nama){gagal++;error.push('Baris '+(r+1)+': ID atau nama tidak valid');continue;}
+    const old=await ambil('pelanggan',id);
+    if(old && mode==='skip'){lewati++;continue;}
+    const jenis=['Reguler','Usaha'].includes(val('jenis'))?val('jenis'):(old?.jenis||'Reguler');
+    const num=(k,def)=>{const x=val(k).replace(',','.');return x===''?def:Number(x);};
+    const abon=num('abonemen',old?.abonemen??(jenis==='Usaha'?50000:15000));
+    const meter=num('meterAwal',old?.meterAwal??0);
+    if(!Number.isFinite(abon)||abon<0||!Number.isFinite(meter)||meter<0){gagal++;error.push('Baris '+(r+1)+': angka abonemen/meter tidak valid');continue;}
+    const metode=['Tunai','Transfer'].includes(val('metode'))?val('metode'):(old?.metode||'Tunai');
+    const kolektor=['Kolektor 1','Kolektor 2','Belum dibagi'].includes(val('kolektor'))?val('kolektor'):(old?.kolektor||'Belum dibagi');
+    const status=['Aktif','Nonaktif'].includes(val('status'))?val('status'):(old?.status||'Aktif');
+    const obj={...old,id,nama,rt:val('rt')||old?.rt||'',rw:val('rw')||old?.rw||'',wa:val('wa')||old?.wa||'',jenis,abonemen:abon,meterAwal:meter,metode,kolektor,status};
+    await simpanDB('pelanggan',obj); if(old)ubah++;else tambah++;
+  }
+  await muatPelanggan(); gambar();
+  alert('Import selesai.\nDitambahkan: '+tambah+'\nDiperbarui: '+ubah+'\nDilewati (duplikat): '+lewati+'\nGagal: '+gagal+(error.length?'\n\n'+error.slice(0,8).join('\n'):''));
+}
+
+/* ---------- Tahap D: backup dan pemulihan database ---------- */
+const STORE_BACKUP = ['pelanggan','tagihan','pengaturan'];
+const FORMAT_BACKUP = 'KALITIRTO_BACKUP';
+async function ambilSeluruhDatabase() {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_BACKUP, 'readonly');
+    const hasil = {};
+    let sisa = STORE_BACKUP.length;
+    for (const nama of STORE_BACKUP) {
+      const req = tx.objectStore(nama).getAll();
+      req.onsuccess = () => { hasil[nama] = req.result || []; if (--sisa === 0) resolve(hasil); };
+      req.onerror = () => reject(req.error || new Error('Gagal membaca ' + nama));
+    }
+    tx.onerror = () => reject(tx.error || new Error('Gagal membaca database'));
+    tx.onabort = () => reject(tx.error || new Error('Pembacaan database dibatalkan'));
+  });
+}
+function waktuNamaFile() {
+  const d = new Date();
+  return d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0') + '-' + String(d.getHours()).padStart(2,'0') + String(d.getMinutes()).padStart(2,'0');
+}
+async function susunBackup() {
+  const data = await ambilSeluruhDatabase();
+  return {format:FORMAT_BACKUP, versiFormat:1, aplikasi:'KALITIRTO', database:'kalitirto', versiDatabase:2, dibuatPada:new Date().toISOString(), jumlah:{pelanggan:data.pelanggan.length, tagihan:data.tagihan.length, pengaturan:data.pengaturan.length}, data};
+}
+async function unduhBackupObjek(obj, prefix='backup-kalitirto') {
+  const isi = JSON.stringify(obj);
+  unduhBlob(prefix + '-' + waktuNamaFile() + '.json', isi, 'application/json;charset=utf-8');
+}
+async function buatBackupManual() {
+  try {
+    const obj = await susunBackup();
+    await unduhBackupObjek(obj);
+    toast('Backup dibuat. Simpan file JSON di tempat aman.');
+  } catch(e) { alert('Backup gagal dibuat: ' + (e.message || e)); }
+}
+function validasiBackup(obj) {
+  if (!obj || obj.format !== FORMAT_BACKUP || obj.versiFormat !== 1 || obj.database !== 'kalitirto' || !obj.data) throw new Error('File bukan backup KALITIRTO yang dikenali.');
+  for (const nama of STORE_BACKUP) {
+    if (!Array.isArray(obj.data[nama])) throw new Error('Isi backup tidak lengkap: data ' + nama + ' tidak ditemukan.');
+  }
+  const cekUnik = (arr, key, nama) => {
+    const set = new Set();
+    for (const item of arr) {
+      if (!item || item[key] === undefined || item[key] === null || String(item[key]) === '') throw new Error('Ada data ' + nama + ' tanpa ID/kunci.');
+      const k = String(item[key]); if (set.has(k)) throw new Error('Ada ID/kunci duplikat pada data ' + nama + ': ' + k); set.add(k);
+    }
+  };
+  cekUnik(obj.data.pelanggan, 'id', 'pelanggan');
+  cekUnik(obj.data.tagihan, 'key', 'tagihan');
+  cekUnik(obj.data.pengaturan, 'k', 'pengaturan');
+  if (obj.data.pelanggan.some(x => typeof x.id !== 'string' || typeof x.nama !== 'string')) throw new Error('Ada data pelanggan yang tidak valid.');
+  if (obj.data.tagihan.some(x => typeof x.key !== 'string' || !Array.isArray(x.baris) || !['draft','terbit'].includes(x.status) || x.baris.some(b => !b || typeof b.id !== 'string'))) throw new Error('Ada struktur tagihan yang tidak valid.');
+  if (obj.data.pengaturan.some(x => typeof x.k !== 'string' || !x.v || typeof x.v !== 'object' || Array.isArray(x.v))) throw new Error('Ada struktur pengaturan yang tidak valid.');
+  return true;
+}
+function tulisSeluruhDatabase(data) {
+  return new Promise((resolve, reject) => {
+    let tx;
+    try { tx = db.transaction(STORE_BACKUP, 'readwrite'); }
+    catch(e) { reject(e); return; }
+    for (const nama of STORE_BACKUP) {
+      const store = tx.objectStore(nama);
+      store.clear();
+      for (const item of data[nama]) store.put(item);
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error('Transaksi pemulihan gagal.'));
+    tx.onabort = () => reject(tx.error || new Error('Pemulihan dibatalkan; data lama tetap dipertahankan.'));
+  });
+}
+async function pulihkanBackup() {
+  const file = $('#backupFile')?.files?.[0];
+  if (!file) return alert('Pilih file backup JSON terlebih dahulu.');
+  if (file.size > 25 * 1024 * 1024) return alert('Ukuran file backup maksimal 25 MB.');
+  let obj;
+  try { obj = JSON.parse(await file.text()); validasiBackup(obj); }
+  catch(e) { return alert('Backup tidak dapat digunakan: ' + (e.message || 'File rusak atau format tidak sesuai.')); }
+  const info = 'Isi file backup:\nPelanggan: ' + obj.data.pelanggan.length + '\nPeriode tagihan: ' + obj.data.tagihan.length + '\nPengaturan: ' + obj.data.pengaturan.length + '\nDibuat: ' + (obj.dibuatPada || 'Tidak diketahui');
+  if (!confirm(info + '\n\nPERHATIAN: seluruh data saat ini akan diganti. Lanjutkan?')) return;
+  try {
+    const kondisiSekarang = await susunBackup();
+    await unduhBackupObjek(kondisiSekarang, 'backup-sebelum-restore-kalitirto');
+    if (!confirm('Backup kondisi saat ini sudah dikirim untuk diunduh. Pastikan file backup-sebelum-restore tersimpan di HP.\n\nJika sudah, tekan OK untuk melanjutkan pemulihan.')) return;
+    await tulisSeluruhDatabase(obj.data);
+    await muatPelanggan(); await muatCfg(); await muatTagihan();
+    gambar();
+    alert('Pemulihan berhasil. Data aplikasi sekarang mengikuti file backup yang dipilih.');
+  } catch(e) {
+    alert('Pemulihan gagal: ' + (e.message || e) + '\nTransaksi database dirancang agar perubahan tidak diterapkan sebagian.');
+    try { await muatPelanggan(); await muatCfg(); await muatTagihan(); gambar(); } catch(_) {}
+  }
+}
+
+/* ---------- Tahap B: cetak dokumen PDF melalui dialog cetak browser ---------- */
+function pdfHTML() {
+  const daftar = [...tag].filter(x => x.status === 'terbit').sort((a,b) => b.key.localeCompare(a.key));
+  const pilih = daftar.map(d => `<option value="${d.key}" ${d.key === (periode || bulanIni()) ? 'selected' : ''}>${lbl(d.key)}</option>`).join('');
+  return `<h2>Cetak dan Ekspor PDF</h2>
+  <div class="card"><p class="kecil">Pilih periode tagihan yang sudah diterbitkan. Setelah menekan tombol cetak, pilih <b>Save as PDF / Simpan sebagai PDF</b> pada menu cetak Android.</p>
+  <label>Periode tagihan</label><select id="pdfPeriode">${pilih || '<option value="">Belum ada tagihan terbit</option>'}</select>
+  <button class="btn" ${daftar.length ? '' : 'disabled'} onclick="cetakRekapPDF()">PDF Rekap Tagihan Bulanan</button>
+  <button class="btn abu" ${daftar.length ? '' : 'disabled'} onclick="cetakKolektorPDF('Kolektor 1')">PDF Lembar Kolektor 1</button>
+  <button class="btn abu" ${daftar.length ? '' : 'disabled'} onclick="cetakKolektorPDF('Kolektor 2')">PDF Lembar Kolektor 2</button></div>
+  <div class="card"><h2>Rincian tagihan pelanggan</h2><label>Pilih pelanggan</label><select id="pdfPelanggan"><option value="">-- Pilih pelanggan --</option>${pel.map(p => `<option value="${esc(p.id)}">${esc(p.id)} - ${esc(p.nama)}</option>`).join('')}</select>
+  <button class="btn" ${daftar.length ? '' : 'disabled'} onclick="cetakPelangganPDF()">PDF Rincian Tagihan Pelanggan</button></div>
+  <div class="card kecil"><b>Catatan:</b> Fitur ini menggunakan fasilitas cetak bawaan browser, bukan library eksternal. Dokumen dapat dibuat menjadi PDF tanpa mengunduh library tambahan dan dapat digunakan saat offline.</div>`;
+}
+function dataPDF() {
+  const k = $('#pdfPeriode')?.value;
+  const d = tag.find(x => x.key === k && x.status === 'terbit');
+  if (!d) { alert('Periode belum memiliki tagihan yang diterbitkan.'); return null; }
+  return d;
+}
+function rupiahPDF(n) { return 'Rp' + Number(n || 0).toLocaleString('id-ID'); }
+function dokumenCetak(judul, isi, landscape = false) {
+  const w = window.open('', '_blank');
+  if (!w) { alert('Jendela cetak diblokir. Izinkan pop-up untuk situs aplikasi KALITIRTO, lalu coba lagi.'); return; }
+  const logo = new URL('logo.jpg', location.href).href;
+  const css = `
+    @page{size:A4 ${landscape ? 'landscape' : 'portrait'};margin:12mm}
+    *{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#17283d;font-size:11px;margin:0}
+    .kop{display:flex;align-items:center;gap:14px;border-bottom:2px solid #0b4aa2;padding-bottom:9px;margin-bottom:14px}
+    .kop img{width:82px;height:62px;object-fit:contain}.identitas{flex:1}.identitas h1{font-size:18px;color:#0b4aa2;margin:0 0 3px}.identitas p{margin:2px 0;color:#46596d}
+    h2{font-size:15px;margin:12px 0 8px;color:#0b4aa2}.meta{margin:8px 0 12px;line-height:1.6}
+    table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border:1px solid #9fb4c9;padding:6px 5px;text-align:left;vertical-align:top}th{background:#eaf4fd;color:#12365c}
+    .angka{text-align:right;white-space:nowrap}.total{font-weight:bold;background:#f1f6fb}.kanan{text-align:right}.muted{color:#586b7e}.transfer{font-weight:bold;color:#8a5a00}
+    .ttd{height:34px}.catatan{margin-top:12px;font-size:10px;color:#526579}.invoice{max-width:700px;margin:auto}.grand{font-size:16px;font-weight:bold;color:#0b4aa2}
+    @media print{button{display:none}}
+  `;
+  const kop = `<header class="kop"><img src="${logo}" alt="Logo"><div class="identitas"><h1>${esc(cfg.org || 'KALITIRTO')}</h1><p>${esc(cfg.alamat || '')}</p><p>${esc(cfg.kontak || '')}</p></div></header>`;
+  w.document.open();
+  w.document.write(`<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(judul)}</title><style>${css}</style></head><body>${kop}${isi}<script>window.onload=()=>{const imgs=[...document.images];Promise.all(imgs.map(i=>i.complete?Promise.resolve():new Promise(r=>{i.onload=i.onerror=r}))).then(()=>setTimeout(()=>window.print(),250))};<\/script></body></html>`);
+  w.document.close();
+}
+function cetakRekapPDF() {
+  const d = dataPDF(); if (!d) return;
+  let totalTagihan = 0, totalTung = 0, total = 0;
+  const rows = d.baris.map((b,i) => {
+    const p = pel.find(x => x.id === b.id) || {};
+    const metode = p.metode || 'Tunai';
+    totalTagihan += Number(b.tarifTotal || 0); totalTung += Number(b.tung || 0); total += Number(b.total || 0);
+    return `<tr><td>${i+1}</td><td>${esc(b.id)}</td><td>${esc(b.nama)}</td><td>${esc(b.rt || '-')}</td><td>${b.pakai ?? '-'} m³</td><td class="angka">${rupiahPDF(b.tarifTotal)}</td><td class="angka">${rupiahPDF(b.tung)}</td><td class="angka">${rupiahPDF(b.total)}</td><td>${metode === 'Transfer' ? '<span class="transfer">TRANSFER</span>' : 'Tunai'}</td></tr>`;
+  }).join('');
+  const isi = `<h2>REKAP TAGIHAN BULAN ${esc(lbl(d.key).toUpperCase())}</h2><div class="meta">Periode: ${esc(lbl(d.key))}<br>Tanggal pencatatan: ${tgl(d.tglBaca)}<br>Tanggal penerbitan: ${tgl(d.tglTerbit)}</div><table><thead><tr><th>No</th><th>ID</th><th>Nama pelanggan</th><th>RT</th><th>Pemakaian</th><th>Tagihan</th><th>Tunggakan</th><th>Total</th><th>Metode</th></tr></thead><tbody>${rows}</tbody><tfoot><tr class="total"><td colspan="5">TOTAL</td><td class="angka">${rupiahPDF(totalTagihan)}</td><td class="angka">${rupiahPDF(totalTung)}</td><td class="angka">${rupiahPDF(total)}</td><td></td></tr></tfoot></table><p class="catatan">Dokumen rekap administrasi tagihan, bukan bukti pembayaran.</p>`;
+  dokumenCetak('Rekap Tagihan ' + lbl(d.key), isi, true);
+}
+function cetakKolektorPDF(nama) {
+  const d = dataPDF(); if (!d) return;
+  const daftar = d.baris.filter(b => { const p = pel.find(x => x.id === b.id); return p && (p.kolektor || 'Belum dibagi') === nama; });
+  if (!daftar.length) { alert('Belum ada pelanggan yang ditugaskan ke ' + nama + '.'); return; }
+  let totalTunai = 0, totalSemua = 0;
+  const rows = daftar.map((b,i) => {
+    const p = pel.find(x => x.id === b.id) || {};
+    const transfer = p.metode === 'Transfer';
+    totalSemua += Number(b.total || 0); if (!transfer) totalTunai += Number(b.total || 0);
+    return `<tr><td>${i+1}</td><td>${esc(b.id)}</td><td>${esc(b.nama)}</td><td>${esc(b.rt || '-')}</td><td class="angka">${rupiahPDF(b.tarifTotal)}</td><td class="angka">${rupiahPDF(b.tung)}</td><td class="angka">${rupiahPDF(b.total)}</td><td>${transfer ? '<span class="transfer">TRANSFER</span>' : 'TUNAI'}</td><td class="ttd"></td></tr>`;
+  }).join('');
+  const isi = `<h2>LEMBAR PENAGIHAN — ${esc(nama.toUpperCase())}</h2><div class="meta">Periode: ${esc(lbl(d.key))}<br>Petugas: ${esc(nama)}</div><table><thead><tr><th>No</th><th>ID</th><th>Nama pelanggan</th><th>RT</th><th>Tagihan</th><th>Tunggakan</th><th>Total</th><th>Metode</th><th>Tanda tangan</th></tr></thead><tbody>${rows}</tbody></table><table><tbody><tr class="total"><td>Total seluruh tagihan</td><td class="angka">${rupiahPDF(totalSemua)}</td><td>Total uang tunai yang ditagihkan</td><td class="angka">${rupiahPDF(totalTunai)}</td></tr></tbody></table><p class="catatan">Pelanggan berlabel TRANSFER tetap tercantum dalam daftar, tetapi tidak termasuk total uang tunai kolektor.</p>`;
+  dokumenCetak('Penagihan ' + nama + ' ' + lbl(d.key), isi, true);
+}
+function cetakPelangganPDF() {
+  const d = dataPDF(); if (!d) return;
+  const id = $('#pdfPelanggan').value;
+  if (!id) return alert('Pilih pelanggan terlebih dahulu.');
+  const b = d.baris.find(x => x.id === id); const p = pel.find(x => x.id === id);
+  if (!b) return alert('Pelanggan ini tidak memiliki tagihan pada periode tersebut.');
+  const isi = `<div class="invoice"><h2>RINCIAN TAGIHAN AIR</h2><div class="meta">Periode: <b>${esc(lbl(d.key))}</b><br>ID pelanggan: <b>${esc(b.id)}</b><br>Nama: <b>${esc(b.nama)}</b><br>RT/RW: ${esc(b.rt || p?.rt || '-')} / ${esc(b.rw || p?.rw || '-')}<br>Tanggal pencatatan: ${tgl(d.tglBaca)}<br>Tanggal penerbitan: ${tgl(d.tglTerbit)}</div><table><tbody><tr><td>Meter awal</td><td class="angka">${esc(b.awal)}</td></tr><tr><td>Meter akhir</td><td class="angka">${b.estimasi ? 'ESTIMASI' : esc(b.akhir)}</td></tr><tr><td>Pemakaian</td><td class="angka">${esc(b.pakai)} m³ ${b.estimasi ? '(estimasi)' : ''}</td></tr><tr><td>Abonemen</td><td class="angka">${rupiahPDF(b.abon)}</td></tr><tr><td>Pemakaian di atas batas (${esc(b.lebih)} m³)</td><td class="angka">${rupiahPDF(b.biaya)}</td></tr><tr><td>Tagihan bulan berjalan</td><td class="angka">${rupiahPDF(b.tarifTotal)}</td></tr><tr><td>Tunggakan ${b.tunggakan?.length ? '(' + esc(b.tunggakan.map(x => x.ket).join(', ')) + ')' : ''}</td><td class="angka">${rupiahPDF(b.tung)}</td></tr><tr class="total"><td><span class="grand">TOTAL TAGIHAN</span></td><td class="angka"><span class="grand">${rupiahPDF(b.total)}</span></td></tr></tbody></table><p class="catatan">Mohon melakukan pembayaran sesuai informasi dari petugas. Dokumen ini merupakan rincian tagihan, bukan bukti pembayaran.</p></div>`;
+  dokumenCetak('Tagihan ' + b.nama + ' ' + lbl(d.key), isi, false);
+}
+
+/* ---------- Mulai ---------- */
+(async () => {
+  try {
+    await bukaDB();
+    await muatPelanggan();
+    await muatCfg();
+    await muatTagihan();
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+  } catch (e) {
+    document.body.insertAdjacentHTML('afterbegin', '<p style="padding:14px;color:#c0392b">Penyimpanan data tidak dapat dibuka di browser ini. Coba buka dengan Chrome.</p>');
+  }
+  layar = 'awal';
+  gambar();
+  // APK Capacitor: seluruh aset aplikasi sudah dibundel lokal; Service Worker tidak diperlukan.
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b4aa2">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<title>KALITIRTO</title>
+<style>
+:root{--bg:#eaf4fd;--card:#fff;--biru:#0b4aa2;--biru2:#2d4aa3;--teks:#12263f;--abu:#5d7087;--garis:#cfe2f5;--merah:#c0392b;--hijau:#1e8449}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--teks);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.4}
+.wrap{max-width:620px;margin:0 auto;padding:14px 14px 96px}
+.card{background:var(--card);border:1px solid var(--garis);border-radius:14px;padding:14px;margin-bottom:12px}
+.head{text-align:center;background:#fff;border-bottom:3px solid var(--biru);padding:8px 0}
+.head img{height:92px;max-width:90%;object-fit:contain}
+h2{margin:6px 0 12px;font-size:20px;color:var(--biru)}
+.btn{display:block;width:100%;min-height:54px;border:0;border-radius:12px;background:var(--biru);color:#fff;font-size:17px;font-weight:700;padding:12px;margin:8px 0;cursor:pointer}
+.btn.abu{background:#fff;color:var(--biru);border:2px solid var(--biru)}
+.btn.merah{background:var(--merah)}
+.btn.hijau{background:var(--hijau)}
+.btn:disabled{background:#b9c7d6;color:#fff;border-color:#b9c7d6}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{background:#fff;border:1px solid var(--garis);border-radius:14px;padding:12px}
+.stat b{display:block;font-size:30px;color:var(--biru)}
+.stat span{color:var(--abu);font-size:14px}
+label{display:block;font-weight:600;margin:12px 0 4px}
+input,select{width:100%;min-height:50px;font-size:16px;padding:10px 12px;border:1.5px solid var(--garis);border-radius:10px;background:#fff;color:var(--teks)}
+input:focus,select:focus,button:focus-visible{outline:3px solid #7fb2ee}
+input[readonly]{background:#eef3f8}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.item{display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--garis);border-radius:12px;padding:12px;margin-bottom:8px;font:inherit;color:inherit;cursor:pointer}
+.item .n{font-weight:700}
+.item .m{color:var(--abu);font-size:14px;margin-top:2px}
+.tag{display:inline-block;font-size:12px;font-weight:700;border-radius:20px;padding:2px 9px;margin-right:4px;background:#dcecfb;color:var(--biru)}
+.tag.off{background:#f1d9d6;color:var(--merah)}
+.tag.usaha{background:#fdebc8;color:#8a5a00}
+.nav{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:2px solid var(--garis);display:flex;padding-bottom:env(safe-area-inset-bottom)}
+.nav button{flex:1;min-height:60px;border:0;background:none;font-size:15px;font-weight:700;color:var(--abu);cursor:pointer}
+.nav button.on{color:var(--biru);box-shadow:inset 0 3px 0 var(--biru)}
+.kecil{color:var(--abu);font-size:14px}
+.splash{min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:24px;background:#fff;text-align:center}
+.splash img{width:100%;max-width:380px}
+.splash .btn{max-width:380px;margin-top:28px}
+.over{position:fixed;inset:0;background:var(--bg);overflow:auto;z-index:5}
+.toast{position:fixed;left:14px;right:14px;bottom:80px;background:var(--teks);color:#fff;border-radius:10px;padding:12px;text-align:center;z-index:9}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="over" class="over" hidden></div>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const rp = n => 'Rp' + Number(n || 0).toLocaleString('id-ID');
+const TARIF = {Reguler: 15000, Usaha: 50000};
+
+/* ---------- Database lokal (IndexedDB) ---------- */
+let db;
+function bukaDB() {
+  return new Promise((ok, gagal) => {
+    const r = indexedDB.open('kalitirto', 1);
+    r.onupgradeneeded = () => {
+      const d = r.result;
+      d.createObjectStore('pelanggan', {keyPath: 'id'});
+      d.createObjectStore('tagihan', {keyPath: 'key'});
+      d.createObjectStore('pengaturan', {keyPath: 'k'});
+    };
+    r.onsuccess = () => { db = r.result; ok(); };
+    r.onerror = () => gagal(r.error);
+  });
+}
+const toko = (s, m = 'readonly') => db.transaction(s, m).objectStore(s);
+const minta = r => new Promise((ok, gagal) => { r.onsuccess = () => ok(r.result); r.onerror = () => gagal(r.error); });
+const semua = s => minta(toko(s).getAll());
+const ambil = (s, k) => minta(toko(s).get(k));
+const simpanDB = (s, v) => minta(toko(s, 'readwrite').put(v));
+const hapusDB = (s, k) => minta(toko(s, 'readwrite').delete(k));
+
+/* ---------- Status aplikasi ---------- */
+let pel = [], cari = '', layar = 'beranda';
+
+async function muatPelanggan() {
+  pel = (await semua('pelanggan')).sort((a, b) => a.id.localeCompare(b.id, 'id', {numeric: true}));
+}
+function toast(t) {
+  const e = document.createElement('div');
+  e.className = 'toast'; e.textContent = t;
+  document.body.appendChild(e);
+  setTimeout(() => e.remove(), 2600);
+}
+
+/* ---------- Tampilan ---------- */
+function kepala() {
+  return '<div class="head"><img src="logo.jpg" alt="KALITIRTO Organisasi Pengelola Air"></div>';
+}
+function navigasi() {
+  const b = (k, t) => `<button class="${layar === k ? 'on' : ''}" onclick="pindah('${k}')">${t}</button>`;
+  return `<nav class="nav">${b('beranda', 'Beranda')}${b('pelanggan', 'Pelanggan')}</nav>`;
+}
+function pindah(k) { layar = k; gambar(); window.scrollTo(0, 0); }
+
+function gambar() {
+  const app = $('#app');
+  if (layar === 'awal') {
+    app.innerHTML = `<div class="splash"><img src="logo.jpg" alt="KALITIRTO"><button class="btn" onclick="pindah('beranda')">Masuk</button></div>`;
+    return;
+  }
+  app.innerHTML = kepala() + '<div class="wrap">' + (layar === 'beranda' ? berandaHTML() : pelangganHTML()) + '</div>' + navigasi();
+}
+
+function berandaHTML() {
+  const aktif = pel.filter(p => p.status === 'Aktif').length;
+  const non = pel.length - aktif;
+  return `<h2>Beranda</h2>
+  <div class="grid">
+    <div class="stat"><b>${aktif}</b><span>Pelanggan aktif</span></div>
+    <div class="stat"><b>${non}</b><span>Pelanggan nonaktif</span></div>
+  </div>
+  <div class="stat" style="margin-top:10px"><b>${aktif}</b><span>Pelanggan masuk perhitungan bulan ini</span></div>
+  <button class="btn" style="margin-top:16px" disabled>MULAI TAGIHAN BULAN INI</button>
+  <p class="kecil">Tombol tagihan dan total tagihan aktif di Tahap 2.</p>`;
+}
+
+function pelangganHTML() {
+  const k = cari.trim().toLowerCase();
+  const daftar = pel.filter(p => !k || p.id.toLowerCase().includes(k) || p.nama.toLowerCase().includes(k));
+  const adaContoh = pel.some(p => p.contoh);
+  let h = `<h2>Pelanggan</h2>
+  <button class="btn" onclick="formPelanggan()">+ Tambah pelanggan</button>
+  <input type="search" placeholder="Cari ID atau nama" value="${esc(cari)}" oninput="cari=this.value;daftarSaja()" style="margin:6px 0 12px">
+  <div id="daftar">${itemHTML(daftar)}</div>
+  <div class="card" style="margin-top:18px"><b>Data contoh</b>
+    <p class="kecil">Untuk mencoba aplikasi. Hapus sebelum dipakai sungguhan.</p>`;
+  h += adaContoh
+    ? `<button class="btn merah" onclick="hapusContoh()">Hapus semua data contoh</button>`
+    : `<button class="btn abu" onclick="isiContoh()">Isi data contoh</button>`;
+  return h + '</div>';
+}
+function itemHTML(daftar) {
+  if (!pel.length) return '<div class="card kecil">Belum ada pelanggan. Tekan "Tambah pelanggan" atau isi data contoh.</div>';
+  if (!daftar.length) return '<div class="card kecil">Tidak ada pelanggan yang cocok.</div>';
+  return daftar.map(p => `<button class="item" onclick="formPelanggan('${esc(p.id).replace(/'/g, '&#39;')}')">
+    <div class="n">${esc(p.id)} - ${esc(p.nama)}</div>
+    <div class="m">RT ${esc(p.rt)} / RW ${esc(p.rw)} &nbsp; Meter awal ${esc(p.meterAwal)}</div>
+    <div style="margin-top:6px"><span class="tag ${p.status === 'Aktif' ? '' : 'off'}">${p.status}</span><span class="tag ${p.jenis === 'Usaha' ? 'usaha' : ''}">${p.jenis}</span><span class="tag">${p.metode}</span></div>
+  </button>`).join('');
+}
+function daftarSaja() {
+  const k = cari.trim().toLowerCase();
+  $('#daftar').innerHTML = itemHTML(pel.filter(p => !k || p.id.toLowerCase().includes(k) || p.nama.toLowerCase().includes(k)));
+}
+
+/* ---------- Formulir pelanggan ---------- */
+function tutup() { $('#over').hidden = true; $('#over').innerHTML = ''; }
+function opt(arr, v) { return arr.map(a => `<option ${a === v ? 'selected' : ''}>${a}</option>`).join(''); }
+
+async function formPelanggan(id) {
+  const p = id ? pel.find(x => x.id === id) : {id: '', nama: '', rt: '', rw: '', wa: '', jenis: 'Reguler', abonemen: TARIF.Reguler, meterAwal: 0, status: 'Aktif', metode: 'Tunai'};
+  const baru = !id;
+  $('#over').hidden = false;
+  $('#over').innerHTML = `<div class="wrap"><h2>${baru ? 'Tambah pelanggan' : 'Edit pelanggan'}</h2>
+  <div class="card">
+    <label>ID pelanggan</label><input id="f_id" value="${esc(p.id)}" ${baru ? '' : 'readonly'} autocapitalize="characters">
+    <label>Nama pelanggan</label><input id="f_nama" value="${esc(p.nama)}">
+    <div class="row2"><div><label>RT</label><input id="f_rt" value="${esc(p.rt)}" inputmode="numeric"></div>
+    <div><label>RW</label><input id="f_rw" value="${esc(p.rw)}" inputmode="numeric"></div></div>
+    <label>Nomor WhatsApp (boleh kosong)</label><input id="f_wa" value="${esc(p.wa)}" inputmode="tel" placeholder="08xxxxxxxxxx">
+    <label>Jenis pelanggan</label><select id="f_jenis" onchange="gantiJenis()">${opt(['Reguler', 'Usaha'], p.jenis)}</select>
+    <label>Abonemen (Rp)</label><input id="f_abon" value="${esc(p.abonemen)}" inputmode="numeric">
+    <label>Angka meter awal</label><input id="f_meter" value="${esc(p.meterAwal)}" inputmode="decimal">
+    <label>Metode pembayaran utama</label><select id="f_metode">${opt(['Tunai', 'Transfer'], p.metode)}</select>
+    ${baru ? '' : `<label>Status</label><input value="${p.status}" readonly>`}
+  </div>
+  <button class="btn" onclick="simpanPelanggan(${baru ? 'null' : "'" + esc(p.id).replace(/'/g, '&#39;') + "'"})">Simpan</button>
+  ${baru ? '' : (p.status === 'Aktif'
+      ? `<button class="btn abu" onclick="ubahStatus('${esc(p.id)}')">Nonaktifkan pelanggan</button>`
+      : `<button class="btn hijau" onclick="ubahStatus('${esc(p.id)}')">Aktifkan pelanggan</button>`)}
+  ${baru ? '' : `<button class="btn merah" onclick="hapusPelanggan('${esc(p.id)}')">Hapus pelanggan</button>`}
+  <button class="btn abu" onclick="tutup()">Batal</button></div>`;
+}
+function gantiJenis() { $('#f_abon').value = TARIF[$('#f_jenis').value]; }
+
+async function simpanPelanggan(idLama) {
+  const v = i => $('#' + i).value.trim();
+  const id = v('f_id').toUpperCase(), nama = v('f_nama');
+  const abon = Number(v('f_abon').replace(',', '.')), meter = Number(v('f_meter').replace(',', '.'));
+  if (!id) return alert('ID pelanggan wajib diisi.');
+  if (!/^[A-Z0-9_-]+$/.test(id)) return alert('ID hanya boleh berisi huruf, angka, tanda - atau _ (tanpa spasi).');
+  if (!nama) return alert('Nama pelanggan wajib diisi.');
+  if (!(abon >= 0) || v('f_abon') === '') return alert('Abonemen harus berupa angka.');
+  if (!(meter >= 0) || v('f_meter') === '') return alert('Angka meter awal harus berupa angka 0 atau lebih.');
+  if (!idLama && await ambil('pelanggan', id)) return alert('ID "' + id + '" sudah dipakai pelanggan lain. Gunakan ID yang berbeda.');
+  const lama = idLama ? pel.find(x => x.id === idLama) : {};
+  await simpanDB('pelanggan', {...lama, id, nama, rt: v('f_rt'), rw: v('f_rw'), wa: v('f_wa'), jenis: v('f_jenis'), abonemen: abon, meterAwal: meter, metode: v('f_metode'), status: lama.status || 'Aktif'});
+  await muatPelanggan(); tutup(); gambar(); toast('Tersimpan');
+}
+
+async function ubahStatus(id) {
+  const p = pel.find(x => x.id === id);
+  if (p.status === 'Aktif') {
+    if (!confirm('Nonaktifkan ' + p.nama + '? Pelanggan nonaktif tidak ikut tagihan bulanan.')) return;
+    p.status = 'Nonaktif';
+  } else {
+    const t = prompt('Masukkan angka meter awal aktual saat pengaktifan:', p.meterAwal);
+    if (t === null) return;
+    const m = Number(String(t).replace(',', '.'));
+    if (t.trim() === '' || !(m >= 0)) return alert('Angka meter tidak valid. Pelanggan belum diaktifkan.');
+    p.meterAwal = m; p.status = 'Aktif';
+  }
+  await simpanDB('pelanggan', p);
+  await muatPelanggan(); tutup(); gambar(); toast('Status diperbarui');
+}
+
+async function hapusPelanggan(id) {
+  const p = pel.find(x => x.id === id);
+  const riwayat = (await semua('tagihan')).some(t => t.id === id || (t.baris && t.baris.some(b => b.id === id)));
+  let pesan = 'HAPUS PERMANEN ' + p.nama + '?\n';
+  if (riwayat) pesan += '\nPERINGATAN: pelanggan ini memiliki data tagihan sebelumnya.\n';
+  pesan += '\nKetik HAPUS lalu tekan OK untuk melanjutkan.';
+  const j = prompt(pesan);
+  if (j === null) return;
+  if (j.trim() !== 'HAPUS') return alert('Dibatalkan. Kata yang diketik harus HAPUS.');
+  await hapusDB('pelanggan', id);
+  await muatPelanggan(); tutup(); gambar(); toast('Pelanggan dihapus');
+}
+
+/* ---------- Data contoh ---------- */
+async function isiContoh() {
+  const c = [
+    ['C001', 'Bapak Slamet', '01', '01', '081200000001', 'Reguler', 15000, 120, 'Tunai'],
+    ['C002', 'Ibu Sari', '01', '02', '', 'Reguler', 15000, 85, 'Transfer'],
+    ['C003', 'Warung Makmur', '02', '01', '081200000003', 'Usaha', 50000, 300, 'Tunai'],
+    ['C004', 'Bapak Joko', '02', '02', '', 'Reguler', 15000, 44, 'Tunai'],
+    ['C005', 'Ibu Wati', '03', '01', '081200000005', 'Reguler', 15000, 10, 'Tunai']
+  ];
+  for (const [id, nama, rt, rw, wa, jenis, abonemen, meterAwal, metode] of c) {
+    if (!(await ambil('pelanggan', id))) await simpanDB('pelanggan', {id, nama, rt, rw, wa, jenis, abonemen, meterAwal, metode, status: 'Aktif', contoh: true});
+  }
+  const x = await ambil('pelanggan', 'C005'); x.status = 'Nonaktif'; await simpanDB('pelanggan', x);
+  await muatPelanggan(); gambar(); toast('Data contoh ditambahkan');
+}
+async function hapusContoh() {
+  if (!confirm('Hapus semua data contoh? Data pelanggan asli Anda tidak ikut terhapus.')) return;
+  for (const p of pel.filter(x => x.contoh)) await hapusDB('pelanggan', p.id);
+  await muatPelanggan(); gambar(); toast('Data contoh dihapus');
+}
+
+/* ---------- Mulai ---------- */
+(async () => {
+  try {
+    await bukaDB();
+    await muatPelanggan();
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+  } catch (e) {
+    document.body.insertAdjacentHTML('afterbegin', '<p style="padding:14px;color:#c0392b">Penyimpanan data tidak dapat dibuka di browser ini. Coba buka dengan Chrome.</p>');
+  }
+  layar = 'awal';
+  gambar();
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+})();
+</script>
+</body>
+</html>
